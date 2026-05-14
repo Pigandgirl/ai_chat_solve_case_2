@@ -52,6 +52,18 @@ export const createCase = createAsyncThunk(
   }
 );
 
+export const deleteCase = createAsyncThunk(
+  'case/deleteCase',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await caseAPI.deleteCase(id);
+      return id;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || '删除案件失败');
+    }
+  }
+);
+
 const caseSlice = createSlice({
   name: 'case',
   initialState,
@@ -93,6 +105,9 @@ const caseSlice = createSlice({
       })
       .addCase(createCase.fulfilled, (state, action) => {
         state.cases.unshift(action.payload);
+      })
+      .addCase(deleteCase.fulfilled, (state, action) => {
+        state.cases = state.cases.filter(c => c._id !== action.payload);
       });
   },
 });

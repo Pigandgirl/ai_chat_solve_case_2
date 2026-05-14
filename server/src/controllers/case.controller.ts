@@ -62,7 +62,7 @@ export const createCase = async (req: Request, res: Response) => {
     const userId = req.user._id;
 
     const caseItem = caseService.create({
-      caseName,
+      caseName: caseName || '待分析案件',
       caseType,
       summary: summary || '',
       userId,
