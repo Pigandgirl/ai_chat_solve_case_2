@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { fetchCases, createCase, deleteCase } from '../store/slices/caseSlice';
@@ -26,6 +26,9 @@ const Workbench = () => {
   const [uploadStage, setUploadStage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [uploadedFileCount, setUploadedFileCount] = useState(0);
+  
+  const processingCases = useRef<Set<string>>(new Set());
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
@@ -41,6 +44,21 @@ const Workbench = () => {
       navigate('/login');
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    pollTimerRef.current = setInterval(() => {
+      const hasInProgress = cases.some(c => c.progress < 100);
+      if (hasInProgress) {
+        dispatch(fetchCases());
+      }
+    }, 5000);
+    
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+      }
+    };
+  }, [dispatch, cases]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -89,6 +107,29 @@ const Workbench = () => {
     setUploadFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const startBackgroundProcessing = async (caseId: string) => {
+    if (processingCases.current.has(caseId)) {
+      return;
+    }
+    processingCases.current.add(caseId);
+
+    try {
+      const response = await documentAPI.getDocuments(caseId);
+      const documents = response.data;
+      
+      for (let i = 0; i < documents.length; i++) {
+        await documentAPI.extractText(documents[i]._id);
+      }
+
+      await documentAPI.analyzeDocument(caseId);
+    } catch (error) {
+      console.error('Background processing error:', error);
+    } finally {
+      processingCases.current.delete(caseId);
+      dispatch(fetchCases());
+    }
+  };
+
   const handleUpload = async () => {
     if (!selectedCase || uploadFiles.length === 0) return;
 
@@ -98,37 +139,20 @@ const Workbench = () => {
 
     try {
       setUploadStage('正在上传文档...');
-      setUploadProgress(10);
       
       for (let i = 0; i < uploadFiles.length; i++) {
+        setUploadProgress(Math.round((i + 1) / totalFiles * 100));
         await documentAPI.uploadDocument(selectedCase._id, uploadFiles[i]);
-        setUploadProgress(Math.round((i + 1) / totalFiles * 30));
       }
 
-      setUploadStage('正在识别文档内容...');
-      setUploadProgress(40);
-
-      const response = await documentAPI.getDocuments(selectedCase._id);
-      const documents = response.data;
-      
-      for (let i = 0; i < documents.length; i++) {
-        await documentAPI.extractText(documents[i]._id);
-        setUploadProgress(40 + Math.round((i + 1) / documents.length * 30));
-      }
-
-      setUploadStage('正在分析案件信息...');
-      setUploadProgress(80);
-
-      await documentAPI.analyzeDocument(selectedCase._id);
-      setUploadProgress(100);
-
-      setUploadStage('分析完成！');
-      setUploadedFileCount(totalFiles);
       await dispatch(fetchCases());
       
       setShowUploadModal(false);
       setUploadFiles([]);
-      setShowSuccessModal(true);
+      setIsUploading(false);
+      setUploadProgress(0);
+      
+      startBackgroundProcessing(selectedCase._id);
 
     } catch (error) {
       setUploadStage('上传失败，请重试');
@@ -231,6 +255,15 @@ const Workbench = () => {
         </div>
 
         <div className="flex-1 p-6">
+          {cases.some(c => c.progress > 0 && c.progress < 100) && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-blue-700">
+                有案件正在后台分析中，进度每 5 秒自动刷新
+              </span>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">案件筛选</h2>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -344,12 +377,17 @@ const Workbench = () => {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <ProgressRing progress={caseItem.progress} />
-                            <span className={`text-sm font-medium ${
-                              caseItem.status === '已完成' ? 'text-green-600' :
-                              caseItem.status === '处理中' ? 'text-blue-600' : 'text-gray-600'
-                            }`}>
-                              {caseItem.status}
-                            </span>
+                            <div>
+                              <span className={`text-sm font-medium ${
+                                caseItem.status === '已完成' ? 'text-green-600' :
+                                caseItem.status === '处理中' || caseItem.progress < 100 ? 'text-blue-600' : 'text-gray-600'
+                              }`}>
+                                {caseItem.progress === 100 ? '已完成' : '处理中...'}
+                              </span>
+                              {caseItem.progress < 100 && (
+                                <p className="text-xs text-gray-400 mt-0.5">后台正在分析</p>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -595,9 +633,9 @@ const Workbench = () => {
                       </div>
                     </div>
                     <p className="text-lg font-medium text-gray-700">{uploadStage}</p>
-                    {uploadProgress < 100 && (
-                      <p className="text-sm text-gray-500 mt-2">正在处理中，请稍候...</p>
-                    )}
+                    <p className="text-sm text-blue-600 mt-3">
+                      文件上传完成后窗口自动关闭，后台继续分析...
+                    </p>
                   </div>
                 </div>
               )}
@@ -613,7 +651,7 @@ const Workbench = () => {
                 disabled={isUploading}
                 className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isUploading ? '处理中...' : '取消'}
+                {isUploading ? '上传中...' : '取消'}
               </button>
               {!isUploading && (
                 <button
@@ -621,7 +659,7 @@ const Workbench = () => {
                   disabled={uploadFiles.length === 0}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  上传并分析
+                  上传并后台分析
                 </button>
               )}
             </div>
@@ -638,9 +676,9 @@ const Workbench = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">上传并分析成功！</h3>
+              <h3 className="text-2xl font-bold text-white mb-2">上传成功！</h3>
               <p className="text-green-100">
-                已成功上传 {uploadedFileCount} 个文档并完成分析
+                已成功上传 {uploadedFileCount} 个文档，正在后台进行分析
               </p>
             </div>
             <div className="p-6">
@@ -648,63 +686,23 @@ const Workbench = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                     <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-800">文档识别</p>
-                    <p className="text-xs text-gray-500">OCR 文本提取完成</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">AI 分析</p>
-                    <p className="text-xs text-gray-500">案件信息提取完成</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">案件生成</p>
-                    <p className="text-xs text-gray-500">案件要素已自动填入</p>
+                    <p className="text-sm font-medium text-gray-800">后台分析中</p>
+                    <p className="text-xs text-gray-500">案件列表每 5 秒自动刷新进度</p>
                   </div>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowSuccessModal(false);
-                    setIsUploading(false);
-                    setUploadProgress(0);
-                  }}
-                  className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                >
-                  返回工作台
-                </button>
-                <button
-                  onClick={() => {
-                    const latestCase = cases[0];
-                    if (latestCase) {
-                      setShowSuccessModal(false);
-                      setIsUploading(false);
-                      setUploadProgress(0);
-                      navigate(`/case/${latestCase._id}`);
-                    }
-                  }}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all font-medium shadow-lg hover:shadow-xl"
-                >
-                  立即查看详情
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                }}
+                className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all font-medium shadow-lg hover:shadow-xl"
+              >
+                返回工作台查看
+              </button>
             </div>
           </div>
         </div>

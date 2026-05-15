@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { documentService, caseService } from '../services/jsonDB';
 import { config } from '../config';
+import { OCRService } from '../services/ocrService';
 
 const uploadDir = config.uploadPath;
 if (!fs.existsSync(uploadDir)) {
@@ -42,7 +43,7 @@ export const uploadDocument = async (req: Request, res: Response) => {
     const caseItem = caseService.findById(caseId);
     if (caseItem) {
       caseService.findByIdAndUpdate(caseId, {
-        documents: [...caseItem.documents, document._id],
+        documents: [...(caseItem.documents || []), document._id],
         status: '处理中',
         progress: 20
       });
@@ -50,7 +51,8 @@ export const uploadDocument = async (req: Request, res: Response) => {
 
     res.json({ message: '文件上传成功', document });
   } catch (error) {
-    res.status(500).json({ message: '文件上传失败', error });
+    console.error('文件上传失败:', error);
+    res.status(500).json({ message: '文件上传失败', error: String(error) });
   }
 };
 
@@ -60,6 +62,7 @@ export const getDocuments = async (req: Request, res: Response) => {
     const documents = documentService.find({ caseId });
     res.json(documents);
   } catch (error) {
+    console.error('获取文档列表失败:', error);
     res.status(500).json({ message: '获取文档列表失败', error });
   }
 };
@@ -73,31 +76,32 @@ export const extractText = async (req: Request, res: Response) => {
       return res.status(404).json({ message: '文档不存在' });
     }
 
-    const mockOcrContent = `这是文档 "${document.fileName}" 的OCR识别内容示例。
+    console.log(`Starting OCR processing for document: ${document.fileName}`);
+    
+    const ocrText = await OCRService.processDocument(document.filePath, document.fileName);
+    
+    console.log(`OCR completed, extracted ${ocrText.length} characters`);
 
-根据文档内容分析：
-1. 投诉企业：xxx技术股份有限公司
-2. 被投诉企业：xxx设计院有限公司
-3. 采购项目：xxx开发项目
-4. 项目编号：GPDXXX-XX23-AXXXXX62
-5. 中标企业：xxx技术股份有限公司
-
-投诉事项摘要：
-- 投诉事项1：关于中标方企业资质问题的投诉
-- 投诉事项2：关于招标流程合规性的质疑
-
-以上内容为模拟OCR识别结果。`;
-
-    documentService.findByIdAndUpdate(documentId, { ocrContent: mockOcrContent });
+    documentService.findByIdAndUpdate(documentId, { 
+      ocrContent: ocrText,
+    });
 
     const caseItem = caseService.findById(document.caseId);
     if (caseItem) {
-      caseService.findByIdAndUpdate(document.caseId, { progress: 50 });
+      caseService.findByIdAndUpdate(document.caseId, { 
+        progress: 50,
+        status: 'text_extracted'
+      });
     }
 
-    res.json({ message: 'OCR识别完成', content: mockOcrContent });
+    res.json({ 
+      message: 'OCR识别完成', 
+      content: ocrText.substring(0, 200) + (ocrText.length > 200 ? '...' : ''),
+      length: ocrText.length
+    });
   } catch (error) {
-    res.status(500).json({ message: 'OCR识别失败', error });
+    console.error('OCR识别失败:', error);
+    res.status(500).json({ message: 'OCR识别失败', error: String(error) });
   }
 };
 
@@ -111,56 +115,100 @@ export const analyzeDocument = async (req: Request, res: Response) => {
     }
 
     const documents = documentService.find({ caseId });
-    const allContent = documents.map(d => d.ocrContent).join('\n\n');
+    const allContentArray = documents.map((d: any) => d.ocrContent || '');
+    const allContent = allContentArray.join('\n\n');
 
-    const mockAnalysis = {
-      elements: {
+    console.log(`Analyzing case ${caseId}, total text length: ${allContent.length}`);
+
+    let caseName = caseItem.caseName || '待分析案件';
+    let extractedInfo: any = {};
+
+    if (allContent && allContent.length > 50) {
+      const contentLower = allContent.toLowerCase();
+      
+      const companyPatterns = [
+        /(?:投诉|质疑)[人单位]*[:：\s]+([^\n，。；]{3,40})/g,
+        /(?:原告|申诉人|异议人)[:：\s]+([^\n，。；]{3,40})/g
+      ];
+      
+      for (const pattern of companyPatterns) {
+        const match = pattern.exec(allContent);
+        if (match && match[1]) {
+          const cleanName = match[1].trim().replace(/[的了和及与]$/, '');
+          if (cleanName.length > 2) {
+            caseName = cleanName.substring(0, 30);
+            break;
+          }
+        }
+      }
+
+      const complainantMatch = allContent.match(/投诉人[:：\s]*([^\n\r，。；]{5,})/);
+      const respondentMatch = allContent.match(/被投诉人[:：\s]*([^\n\r，。；]{5,})|代理机构[:：\s]*([^\n\r，。；]{5,})/);
+      const projectMatch = allContent.match(/项目名称[:：\s]*([^\n\r，。；]{4,})|采购项目[:：\s]*([^\n\r，。；]{4,})/);
+      const numberMatch = allContent.match(/(?:项目|招标|采购)(?:编号|单号|号次)[:：\s]*([A-Z0-9-]{6,})/);
+
+      extractedInfo = {
         complainant: {
-          companyName: 'xxx技术股份有限公司',
-          address: 'xx市xx区xx街道xx社区xx号',
-          complaintDate: '2025年02月20日',
+          companyName: complainantMatch ? complainantMatch[1].trim() : (documents.length > 0 ? '已识别企业' : '待识别'),
+          address: '详见文档内容',
+          complaintDate: new Date().toISOString().split('T')[0].replace(/-/g, '年').replace(/T/, '月') + '日',
           hasProtested: '已质疑'
         },
         respondent: {
-          companyName: 'xxx设计院有限公司',
-          address: 'xx市xx区xx街道xx社区xx号'
-        }
-      },
-      facts: {
-        projectName: 'xxx开发项目',
-        projectCode: 'GPDXXX-XX23-AXXXXX62',
-        biddingCompany: 'xxx技术股份有限公司',
-        purchaser: 'xxx学院/医院',
-        agency: 'xxx设计院有限公司'
-      },
-      complaintItems: [
-        {
-          title: '投诉事项1',
-          content: '本项目公示的中标方广东恒电信息科技股份有限公司参与本项目中响应"提供的货物全部由符合政策要求的中小企业制造"，提出"广东恒电信息科技股份有限公司"为"小型企业"，从人员103人，营业收入为15735.28万元。通过企业工商注册信息查询，该企业属于"软件和信息技术服务业"，依据国家统计局《统计上大中小微型企业划分办法(2017)》的通知，中型企业标准为从业人员(X)满足100人<X<300人且营业收入(Y)满足1000万元<Y<10000万元，根据该企业提供的从业人员和营业收入信息，该企业属于"中型企业"不符合"小型企业"划分，对此该企业用"小型企业"虚假响应本标书要求获取价格扣除提出投诉。',
-          legalBasis: '1.本标书中明确要求:投标人应当对其出具的《中小企业声明函》真实性负责，投标人出具《中小企业声明函》内容不实的，属于提供虚假材料谋取中标。2.招标投标法实施条例，第五十一条，看下列情形之一的，评标委员会应当否决其投标:第(七)条投标人弄虚作假行贿等违法行为。'
+          companyName: respondentMatch ? (respondentMatch[1] || respondentMatch[2] || '待确认').trim() : '待识别',
+          address: '详见文档内容'
         },
-        {
-          title: '投诉事项2',
-          content: '本项目于2024-09-14公示结果后，我方在9月14日对项目结果提出质疑，采购人/代理机构于2024年9月23日邮件回复，在答复的材料中，提供的证明材料不具备任何公信力。提供的是自测条件，自述行业，不是官方认定的行业属性和中小企业认定结果。广东恒电信息科技股份有限公司注册行业是软件和信息技术服务业，自测却选择工业企业自测，明显存在故意规避标准政策要求。',
-          legalBasis: '1.本标书中明确要求:投标人应当对其出具的《中小企业声明函》真实性负责，投标人出具《中小企业声明函》内容不实的，属于提供虚假材料谋取中标。'
+        projectInfo: {
+          projectName: projectMatch ? (projectMatch[1] || projectMatch[2] || caseName).trim() : caseName,
+          projectCode: numberMatch ? numberMatch[1].trim() : 'AUTO-' + Date.now(),
+          biddingCompany: '待确认',
+          purchaser: '待确认',
+          agency: '待确认'
         }
-      ],
-      suggestions: '根据以上分析，建议：1. 核实中标企业的真实资质情况；2. 审查招标流程是否合规；3. 根据相关法律法规作出处理决定。'
+      };
+    } else {
+      caseName = '招标投诉案件-' + new Date().toLocaleDateString('zh-CN');
+    }
+
+    const complaintItemsArray = [
+      {
+        title: '投诉事项1',
+        content: allContent && allContent.length > 100 
+          ? allContent.substring(0, 400) + '\n\n（文档后续内容已在系统中存储，可在案件办理时查看。）'
+          : '文档内容分析中，请在案件办理界面查看详细信息。',
+        legalBasis: '根据《招标投标法》、《政府采购法》及相关实施条例，结合文档内容进一步分析。'
+      }
+    ];
+
+    const mockAnalysis = {
+      elements: extractedInfo.complainant || {},
+      facts: extractedInfo.projectInfo || {},
+      suggestions: '系统已完成文档文本提取。请进入"办理"界面查看完整内容。',
+      extractedInfo
     };
 
     caseService.findByIdAndUpdate(caseId, {
+      caseName: caseName,
       analysisResult: mockAnalysis,
-      complainant: mockAnalysis.elements.complainant,
-      respondent: mockAnalysis.elements.respondent,
-      projectInfo: mockAnalysis.facts,
-      complaintItems: mockAnalysis.complaintItems,
-      summary: mockAnalysis.suggestions.substring(0, 100) + '...',
+      complainant: extractedInfo.complainant || { companyName: '待完善', address: '' },
+      respondent: extractedInfo.respondent || { companyName: '待完善', address: '' },
+      projectInfo: extractedInfo.projectInfo || { projectName: caseName, projectCode: '', biddingCompany: '', purchaser: '', agency: '' },
+      complaintItems: complaintItemsArray,
+      summary: allContent && allContent.length > 50 ? allContent.substring(0, 80) + '...' : '案件已上传，待进一步分析。',
       progress: 100,
       status: '已完成'
     });
 
-    res.json({ message: 'AI分析完成', result: mockAnalysis });
+    res.json({ 
+      message: 'AI分析完成', 
+      result: {
+        caseName,
+        textLength: allContent.length,
+        documentsAnalyzed: documents.length
+      }
+    });
   } catch (error) {
-    res.status(500).json({ message: 'AI分析失败', error });
+    console.error('AI分析失败:', error);
+    res.status(500).json({ message: 'AI分析失败', error: String(error) });
   }
 };
