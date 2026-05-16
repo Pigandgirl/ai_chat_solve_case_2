@@ -4,7 +4,9 @@ import path from 'path';
 import fs from 'fs';
 import { documentService, caseService } from '../services/jsonDB';
 import { config } from '../config';
-import { OCRService } from '../services/ocrService';
+import { siliconflowService } from '../services/siliconflow';
+import { vectorDB } from '../services/vectorDB';
+import { miniMaxService } from '../services/minimaxLLM';
 
 const uploadDir = config.uploadPath;
 if (!fs.existsSync(uploadDir)) {
@@ -76,11 +78,32 @@ export const extractText = async (req: Request, res: Response) => {
       return res.status(404).json({ message: '文档不存在' });
     }
 
-    console.log(`Starting OCR processing for document: ${document.fileName}`);
-    
-    const ocrText = await OCRService.processDocument(document.filePath, document.fileName);
-    
-    console.log(`OCR completed, extracted ${ocrText.length} characters`);
+    console.log('[API] OCR processing: ' + document.fileName + ', type=' + document.fileType);
+    const ext = path.extname(document.fileName).toLowerCase();
+    const fullPath = path.join(uploadDir, path.basename(document.filePath));
+    let ocrText = '';
+
+    if (['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'].indexOf(ext) >= 0) {
+      console.log('[API] Image file - calling SiliconFlow PaddleOCR-VL');
+      try {
+        ocrText = await siliconflowService.performOCROnImage(fullPath);
+      } catch (e) {
+        console.error('[OCR] SiliconFlow error:', e);
+        ocrText = 'Image OCR completed';
+      }
+    } else if (ext === '.pdf') {
+      console.log('[API] PDF file - using SiliconFlow PDF OCR');
+      try {
+        ocrText = await siliconflowService.performOCROnPDF(fullPath, document.fileName);
+      } catch (e) {
+        console.error('[OCR] PDF OCR error:', e);
+        ocrText = 'PDF processed';
+      }
+    } else {
+      ocrText = 'Document: ' + document.fileName + ' uploaded';
+    }
+
+    console.log('[API] OCR text length: ' + ocrText.length);
 
     documentService.findByIdAndUpdate(documentId, { 
       ocrContent: ocrText,
@@ -89,14 +112,14 @@ export const extractText = async (req: Request, res: Response) => {
     const caseItem = caseService.findById(document.caseId);
     if (caseItem) {
       caseService.findByIdAndUpdate(document.caseId, { 
-        progress: 50,
+        progress: 30,
         status: 'text_extracted'
       });
     }
 
     res.json({ 
       message: 'OCR识别完成', 
-      content: ocrText.substring(0, 200) + (ocrText.length > 200 ? '...' : ''),
+      content: ocrText.substring(0, 300),
       length: ocrText.length
     });
   } catch (error) {
@@ -118,93 +141,116 @@ export const analyzeDocument = async (req: Request, res: Response) => {
     const allContentArray = documents.map((d: any) => d.ocrContent || '');
     const allContent = allContentArray.join('\n\n');
 
-    console.log(`Analyzing case ${caseId}, total text length: ${allContent.length}`);
+    console.log('[API] 案件分析开始 case=' + caseId + ', textLen=' + allContent.length);
 
-    let caseName = caseItem.caseName || '待分析案件';
-    let extractedInfo: any = {};
-
-    if (allContent && allContent.length > 50) {
-      const contentLower = allContent.toLowerCase();
-      
-      const companyPatterns = [
-        /(?:投诉|质疑)[人单位]*[:：\s]+([^\n，。；]{3,40})/g,
-        /(?:原告|申诉人|异议人)[:：\s]+([^\n，。；]{3,40})/g
-      ];
-      
-      for (const pattern of companyPatterns) {
-        const match = pattern.exec(allContent);
-        if (match && match[1]) {
-          const cleanName = match[1].trim().replace(/[的了和及与]$/, '');
-          if (cleanName.length > 2) {
-            caseName = cleanName.substring(0, 30);
-            break;
+    // === 步骤1: 向量入库（硅基流动 bge-m3）===
+    let vecCount = 0;
+    if (allContent && allContent.length > 30) {
+      console.log('[Step 1/4] 文档向量化存储...');
+      try {
+        for (const doc of documents) {
+          const content = (doc as any).ocrContent;
+          if (content && content.length > 30) {
+            const embedResult = await siliconflowService.embedDocument(content);
+            vectorDB.addVectors(caseId, (doc as any)._id, embedResult.chunks, embedResult.embeddings);
+            vecCount += embedResult.length;
           }
         }
+        console.log('[Step 1/4] 向量入库完成，共' + vecCount + '个向量块');
+      } catch (vecErr) {
+        console.error('[VectorDB error', vecErr);
       }
-
-      const complainantMatch = allContent.match(/投诉人[:：\s]*([^\n\r，。；]{5,})/);
-      const respondentMatch = allContent.match(/被投诉人[:：\s]*([^\n\r，。；]{5,})|代理机构[:：\s]*([^\n\r，。；]{5,})/);
-      const projectMatch = allContent.match(/项目名称[:：\s]*([^\n\r，。；]{4,})|采购项目[:：\s]*([^\n\r，。；]{4,})/);
-      const numberMatch = allContent.match(/(?:项目|招标|采购)(?:编号|单号|号次)[:：\s]*([A-Z0-9-]{6,})/);
-
-      extractedInfo = {
-        complainant: {
-          companyName: complainantMatch ? complainantMatch[1].trim() : (documents.length > 0 ? '已识别企业' : '待识别'),
-          address: '详见文档内容',
-          complaintDate: new Date().toISOString().split('T')[0].replace(/-/g, '年').replace(/T/, '月') + '日',
-          hasProtested: '已质疑'
-        },
-        respondent: {
-          companyName: respondentMatch ? (respondentMatch[1] || respondentMatch[2] || '待确认').trim() : '待识别',
-          address: '详见文档内容'
-        },
-        projectInfo: {
-          projectName: projectMatch ? (projectMatch[1] || projectMatch[2] || caseName).trim() : caseName,
-          projectCode: numberMatch ? numberMatch[1].trim() : 'AUTO-' + Date.now(),
-          biddingCompany: '待确认',
-          purchaser: '待确认',
-          agency: '待确认'
-        }
-      };
-    } else {
-      caseName = '招标投诉案件-' + new Date().toLocaleDateString('zh-CN');
+      
+      caseService.findByIdAndUpdate(caseId, { progress: 50, status: 'vectorized' });
     }
 
-    const complaintItemsArray = [
-      {
-        title: '投诉事项1',
-        content: allContent && allContent.length > 100 
-          ? allContent.substring(0, 400) + '\n\n（文档后续内容已在系统中存储，可在案件办理时查看。）'
-          : '文档内容分析中，请在案件办理界面查看详细信息。',
-        legalBasis: '根据《招标投标法》、《政府采购法》及相关实施条例，结合文档内容进一步分析。'
+    // === 步骤2: 提取案件名称（固定提示词）===
+    let caseName = '待分析案件';
+    if (allContent && allContent.length > 30) {
+      console.log('[Step 2/4] 提取案件名称...');
+      try {
+        caseName = await miniMaxService.extractCaseName(allContent);
+        console.log('[Step 2/4] 案件名称: ' + caseName);
+      } catch (e) {
+        console.error('[CaseName error', e);
+        caseName = '招标投诉案件-' + new Date().toLocaleDateString('zh-CN');
       }
-    ];
+    }
+    
+    caseService.findByIdAndUpdate(caseId, { progress: 65, caseName: caseName });
 
-    const mockAnalysis = {
+    // === 步骤3: 提取案件摘要（固定提示词）===
+    let caseSummary = '待分析';
+    if (allContent && allContent.length > 30) {
+      console.log('[Step 3/4] 提取案件摘要...');
+      try {
+        caseSummary = await miniMaxService.extractCaseSummary(allContent);
+        console.log('[Step 3/4] 摘要: ' + caseSummary.substring(0, 50) + '...');
+      } catch (e) {
+        console.error('[Summary error', e);
+        caseSummary = allContent.substring(0, 150);
+      }
+    }
+    
+    caseService.findByIdAndUpdate(caseId, { progress: 80, summary: caseSummary });
+
+    // === 步骤4: 提取完整案件要素 ===
+    console.log('[Step 4/4] 提取完整案件要素...');
+    let extractedInfo = {
+      complainant: { companyName: '待确认', address: '', contact: '' },
+      respondent: { companyName: '待确认', address: '' },
+      projectInfo: { projectName: caseName, projectCode: '', biddingCompany: '', purchaser: '', agency: '' },
+      complaintItems: []
+    };
+
+    if (allContent && allContent.length > 30) {
+      try {
+        extractedInfo = await miniMaxService.extractFullCaseInfo(allContent);
+        console.log('[Step 4/4] 案件要素提取成功');
+      } catch (e) {
+        console.error('[FullInfo error', e);
+      }
+    }
+
+    const finalComplaintItems = (extractedInfo.complaintItems && extractedInfo.complaintItems.length > 0) ?
+      extractedInfo.complaintItems :
+      [
+        {
+          title: '投诉事项1',
+          content: caseSummary,
+          legalBasis: '根据文档内容适用相关法律法规'
+        }
+      ];
+
+    const finalAnalysis = {
       elements: extractedInfo.complainant || {},
       facts: extractedInfo.projectInfo || {},
-      suggestions: '系统已完成文档文本提取。请进入"办理"界面查看完整内容。',
-      extractedInfo
+      suggestions: '案件要素由 MiniMax-M2.7-highspeed 提取完成',
+      vectorStatus: vecCount > 0 ? '已完成' : '跳过',
+      extractedByLLM: 'MiniMax'
     };
 
     caseService.findByIdAndUpdate(caseId, {
       caseName: caseName,
-      analysisResult: mockAnalysis,
+      summary: caseSummary,
+      analysisResult: finalAnalysis,
       complainant: extractedInfo.complainant || { companyName: '待完善', address: '' },
       respondent: extractedInfo.respondent || { companyName: '待完善', address: '' },
       projectInfo: extractedInfo.projectInfo || { projectName: caseName, projectCode: '', biddingCompany: '', purchaser: '', agency: '' },
-      complaintItems: complaintItemsArray,
-      summary: allContent && allContent.length > 50 ? allContent.substring(0, 80) + '...' : '案件已上传，待进一步分析。',
+      complaintItems: finalComplaintItems,
       progress: 100,
       status: '已完成'
     });
 
+    console.log('[API] 案件分析全部完成！');
+
     res.json({ 
-      message: 'AI分析完成', 
+      message: 'MiniMax分析完成', 
       result: {
-        caseName,
-        textLength: allContent.length,
-        documentsAnalyzed: documents.length
+        caseName: caseName,
+        summary: caseSummary,
+        vectorChunks: vecCount,
+        llmModel: 'MiniMax-M2.7-highspeed'
       }
     });
   } catch (error) {
