@@ -334,7 +334,7 @@ const Workbench = () => {
                   </svg>
                   起始日期
                 </label>
-                <div className="relative cursor-pointer" onClick={() => document.getElementById('startDate')?.showPicker()}>
+                <div className="relative cursor-pointer" onClick={() => (document.getElementById('startDate') as HTMLInputElement)?.showPicker()}>
                   <input
                     id="startDate"
                     type="date"
@@ -353,7 +353,7 @@ const Workbench = () => {
                   </svg>
                   结束日期
                 </label>
-                <div className="relative cursor-pointer" onClick={() => document.getElementById('endDate')?.showPicker()}>
+                <div className="relative cursor-pointer" onClick={() => (document.getElementById('endDate') as HTMLInputElement)?.showPicker()}>
                   <input
                     id="endDate"
                     type="date"
