@@ -13,7 +13,7 @@ const CaseDetail = () => {
 
   useEffect(() => {
     if (id) {
-      dispatch(fetchCaseById(id));
+      dispatch(fetchCaseById(parseInt(id)));
     }
   }, [dispatch, id]);
 
@@ -41,6 +41,12 @@ const CaseDetail = () => {
       </div>
     );
   }
+
+  const complainant = currentCase.complainant || {};
+  const respondent = currentCase.respondent || {};
+  const projectInfo = currentCase.project_info || {};
+  const complaintItems = currentCase.complaint_items || [];
+  const analysisResult = currentCase.analysis_result || {};
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,7 +77,7 @@ const CaseDetail = () => {
                   <h1 className="text-xl font-bold text-gray-800">粤省法智能办案系统</h1>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-sm text-blue-600 font-medium">当前案件：</span>
-                    <span className="text-sm text-gray-600">{currentCase.caseName}</span>
+                    <span className="text-sm text-gray-600">{currentCase.case_name}</span>
                   </div>
                 </div>
               </div>
@@ -99,41 +105,41 @@ const CaseDetail = () => {
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">投诉企业</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.complainant.companyName || '-'}
+                          {(complainant as Record<string, unknown>).companyName as string || '-'}
                         </p>
                       </div>
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">企业地址</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.complainant.address || '-'}
+                          {(complainant as Record<string, unknown>).address as string || '-'}
                         </p>
                       </div>
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">投诉日期</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.complainant.complaintDate || '-'}
+                          {(complainant as Record<string, unknown>).complaintDate as string || '-'}
                         </p>
                       </div>
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">是否已经质疑</span>
                         <p className={`text-sm font-medium mt-1 ${
-                          currentCase.complainant.hasProtested === '已质疑' 
-                            ? 'text-orange-600' 
+                          (complainant as Record<string, unknown>).hasProtested === '已质疑'
+                            ? 'text-orange-600'
                             : 'text-gray-600'
                         }`}>
-                          {currentCase.complainant.hasProtested || '-'}
+                          {(complainant as Record<string, unknown>).hasProtested as string || '-'}
                         </p>
                       </div>
                       <div className="pt-4">
                         <span className="text-sm text-gray-500">被投诉企业</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.respondent.companyName || '-'}
+                          {(respondent as Record<string, unknown>).companyName as string || '-'}
                         </p>
                       </div>
                       <div className="pt-4">
                         <span className="text-sm text-gray-500">企业地址</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.respondent.address || '-'}
+                          {(respondent as Record<string, unknown>).address as string || '-'}
                         </p>
                       </div>
                     </div>
@@ -149,31 +155,31 @@ const CaseDetail = () => {
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">采购项目名称</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.projectInfo.projectName || '-'}
+                          {(projectInfo as Record<string, unknown>).projectName as string || '-'}
                         </p>
                       </div>
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">采购项目编号</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.projectInfo.projectCode || '-'}
+                          {(projectInfo as Record<string, unknown>).projectCode as string || '-'}
                         </p>
                       </div>
                       <div className="border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">中标企业</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.projectInfo.biddingCompany || '-'}
+                          {(projectInfo as Record<string, unknown>).biddingCompany as string || '-'}
                         </p>
                       </div>
                       <div className="pt-4">
                         <span className="text-sm text-gray-500">采购人</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.projectInfo.purchaser || '-'}
+                          {(projectInfo as Record<string, unknown>).purchaser as string || '-'}
                         </p>
                       </div>
                       <div className="pt-4">
                         <span className="text-sm text-gray-500">代理机构</span>
                         <p className="text-gray-800 font-medium mt-1">
-                          {currentCase.projectInfo.agency || '-'}
+                          {(projectInfo as Record<string, unknown>).agency as string || '-'}
                         </p>
                       </div>
                     </div>
@@ -185,28 +191,28 @@ const CaseDetail = () => {
                     <h2 className="text-lg font-semibold text-gray-800">投诉事项具体内容</h2>
                   </div>
                   <div className="p-6">
-                    {currentCase.complaintItems.length === 0 ? (
+                    {complaintItems.length === 0 ? (
                       <p className="text-gray-500 text-center py-8">暂无投诉事项</p>
                     ) : (
-                      currentCase.complaintItems.map((item, index) => (
+                      complaintItems.map((item: Record<string, unknown>, index: number) => (
                         <div key={index} className="border-b border-gray-100 pb-6 mb-6 last:border-0 last:pb-0 last:mb-0">
                           <div className="flex items-center gap-3 mb-4">
                             <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium">
-                              {item.title}
+                              {item.title as string}
                             </span>
                           </div>
                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                             <div className="lg:col-span-2">
                               <span className="text-sm text-gray-500">投诉内容</span>
                               <p className="text-gray-800 mt-1 leading-relaxed">
-                                {item.content || '-'}
+                                {item.content as string || '-'}
                               </p>
                             </div>
                             <div>
                               <span className="text-sm text-gray-500">法律依据</span>
                               <div className="mt-1 p-4 bg-gray-50 rounded-lg">
                                 <p className="text-gray-800 text-sm leading-relaxed">
-                                  {item.legalBasis || '-'}
+                                  {item.legalBasis as string || '-'}
                                 </p>
                               </div>
                             </div>
@@ -228,21 +234,24 @@ const CaseDetail = () => {
                   {currentCase.documents && currentCase.documents.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {currentCase.documents.map((doc) => (
-                        <div key={doc._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div key={doc.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                           <div className="flex items-center gap-3">
                             <div className="text-3xl">📄</div>
                             <div>
-                              <p className="font-medium text-gray-800 truncate">{doc.fileName}</p>
+                              <p className="font-medium text-gray-800 truncate">{doc.original_name}</p>
                               <p className="text-xs text-gray-500">
-                                {new Date(doc.uploadedAt).toLocaleDateString('zh-CN')}
+                                {new Date(doc.uploaded_at).toLocaleDateString('zh-CN')}
                               </p>
                             </div>
                           </div>
-                          {doc.ocrContent && (
+                          {doc.ocr_done && (
                             <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-600 line-clamp-3">
-                                {doc.ocrContent.substring(0, 100)}...
+                              <p className="text-sm text-green-600">
+                                已识别 | 置信度: {(doc.ocr_confidence * 100).toFixed(1)}%
                               </p>
+                              {doc.is_scanned && (
+                                <p className="text-xs text-orange-500 mt-1">扫描件</p>
+                              )}
                             </div>
                           )}
                         </div>
@@ -297,7 +306,7 @@ const CaseDetail = () => {
                   <div className="p-6 bg-blue-50 rounded-lg">
                     <h3 className="font-semibold text-gray-800 mb-3">处理建议</h3>
                     <p className="text-gray-700 leading-relaxed">
-                      {currentCase.analysisResult.suggestions || 
+                      {(analysisResult as Record<string, unknown>).suggestions as string ||
                         '根据案件分析结果，建议：1. 核实中标企业的真实资质情况；2. 审查招标流程是否合规；3. 根据相关法律法规作出处理决定。'}
                     </p>
                   </div>
@@ -348,19 +357,10 @@ const CaseDetail = () => {
                     <p className="text-gray-600 text-center">
                       📝 文书生成功能正在开发中，即将上线！
                     </p>
-                    <p className="text-sm text-gray-500 text-center mt-2">
-                      根据案件分析结果自动生成法律文书
-                    </p>
                   </div>
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="fixed bottom-6 right-6">
-            <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg">
-              完成案件办理
-            </button>
           </div>
         </div>
       </div>

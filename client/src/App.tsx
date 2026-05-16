@@ -7,22 +7,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Workbench from './pages/Workbench';
 import CaseDetail from './pages/CaseDetail';
-
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    return <Navigate to="/login" />;
-  }
-  return <>{children}</>;
-};
-
-const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    return <Navigate to="/workbench" />;
-  }
-  return <>{children}</>;
-};
+import OCRVerification from './pages/OCRVerification';
+import TestAPI from './pages/Test';
 
 function App() {
   const dispatch = useDispatch();
@@ -36,38 +22,12 @@ function App() {
 
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/workbench"
-        element={
-          <ProtectedRoute>
-            <Workbench />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/case/:id"
-        element={
-          <ProtectedRoute>
-            <CaseDetail />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/test" element={<TestAPI />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/workbench" element={<Workbench />} />
+      <Route path="/case/:id" element={<CaseDetail />} />
+      <Route path="/case/:caseId/document/:documentId/ocr-verify" element={<OCRVerification />} />
       <Route path="/" element={<Navigate to="/login" />} />
     </Routes>
   );

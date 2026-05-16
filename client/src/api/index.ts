@@ -1,10 +1,11 @@
 import axios from 'axios';
-import { User, CaseItem, LoginData, RegisterData } from '../types';
+import { User, CaseItem, LoginData, RegisterData, UploadResponse, OCRResultResponse } from '../types';
 
-const baseURL = '/api';
+const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 const axiosInstance = axios.create({
   baseURL,
+  timeout: 15000,
 });
 
 axiosInstance.interceptors.request.use((config) => {
@@ -35,34 +36,38 @@ export const authAPI = {
 
 export const caseAPI = {
   getCases: (params?: {
-    caseName?: string;
+    case_name?: string;
     keywords?: string;
-    caseType?: string;
-    startDate?: string;
-    endDate?: string;
+    case_type?: string;
+    start_date?: string;
+    end_date?: string;
   }) => axiosInstance.get('/cases', { params }),
-  getCaseById: (id: string) => axiosInstance.get(`/cases/${id}`),
-  createCase: (data: { caseName: string; caseType: string; summary?: string }) =>
+  getCaseById: (id: number) => axiosInstance.get(`/cases/${id}`),
+  createCase: (data: { case_name: string; case_type: string; summary?: string }) =>
     axiosInstance.post('/cases', data),
-  updateCase: (id: string, data: Partial<CaseItem>) =>
+  updateCase: (id: number, data: Partial<CaseItem>) =>
     axiosInstance.put(`/cases/${id}`, data),
-  deleteCase: (id: string) => axiosInstance.delete(`/cases/${id}`),
+  deleteCase: (id: number) => axiosInstance.delete(`/cases/${id}`),
 };
 
 export const documentAPI = {
-  uploadDocument: (caseId: string, file: File) => {
+  uploadDocuments: (caseId: number, files: File[]) => {
     const formData = new FormData();
-    formData.append('caseId', caseId);
-    formData.append('file', file);
-    return axiosInstance.post('/documents/upload', formData, {
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    return axiosInstance.post<UploadResponse>(`/cases/${caseId}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  getDocuments: (caseId: string) => axiosInstance.get(`/documents/${caseId}`),
-  extractText: (documentId: string) =>
-    axiosInstance.post(`/documents/${documentId}/ocr`),
-  analyzeDocument: (caseId: string) =>
-    axiosInstance.post(`/documents/analyze/${caseId}`),
+  getDocuments: (caseId: number) =>
+    axiosInstance.get(`/cases/${caseId}/documents`),
+  getOCRResult: (caseId: number, documentId: number) =>
+    axiosInstance.get<OCRResultResponse>(`/cases/${caseId}/documents/${documentId}/ocr`),
+  updateOCRResult: (caseId: number, documentId: number, correctedOcr: Record<string, unknown>) =>
+    axiosInstance.put(`/cases/${caseId}/documents/${documentId}/ocr`, correctedOcr),
+  retryDocumentOCR: (caseId: number, documentId: number) =>
+    axiosInstance.post(`/cases/${caseId}/retry-document/${documentId}`),
 };
 
 export const saveToken = (token: string) => {

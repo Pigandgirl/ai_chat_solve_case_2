@@ -27,10 +27,17 @@ const Register = () => {
       return;
     }
     
-    const result = await dispatch(register(formData));
-    if (register.fulfilled.match(result)) {
-      alert('注册成功，请登录');
-      navigate('/login');
+    try {
+      const result = await dispatch(register(formData));
+      if (register.fulfilled.match(result)) {
+        alert('注册成功，请登录');
+        navigate('/login');
+      } else {
+        const errMsg = typeof result.payload === 'string' ? result.payload : '注册失败，请稍后重试';
+        alert(errMsg);
+      }
+    } catch (err: any) {
+      alert(err?.message || '网络错误，请检查网络连接后重试');
     }
   };
 
