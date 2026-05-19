@@ -1,7 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+import logging
+
+from urllib.parse import quote
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import List
+from io import BytesIO
 
 from ..database import get_db
 from ..models.case import Case
@@ -16,6 +21,8 @@ from ..tasks.process_case import process_case_documents
 from ..config import settings
 from .cases import case_to_dict, doc_to_dict, status_to_dict
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/cases", tags=["documents"])
 
 
@@ -26,6 +33,7 @@ MAX_FILE_SIZE = settings.MAX_FILE_SIZE_MB * 1024 * 1024
 async def upload_documents(
     case_id: int,
     files: List[UploadFile] = File(...),
+    category: str = Form(default="1_财政厅移交材料"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -68,6 +76,7 @@ async def upload_documents(
                 file_size=upload_result["file_size"],
                 file_type="application/pdf",
                 ocr_done=False,
+                category=category,
             )
             db.add(document)
             await db.flush()
@@ -186,6 +195,42 @@ async def get_ocr_result(
     }
 
 
+@router.get("/{case_id}/documents/{document_id}/file")
+async def get_document_file(
+    case_id: int,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Case).where(and_(Case.id == case_id, Case.user_id == current_user.id))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    doc_result = await db.execute(
+        select(CaseDocument).where(and_(CaseDocument.id == document_id, CaseDocument.case_id == case_id))
+    )
+    document = doc_result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    try:
+        file_content = await minio_service.get_file(document.storage_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="原始文件不存在或已损坏")
+
+    return StreamingResponse(
+        BytesIO(file_content),
+        media_type=document.file_type or "application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(document.original_name)}",
+            "Content-Length": str(len(file_content)),
+        },
+    )
+
+
 @router.put("/{case_id}/documents/{document_id}/ocr", response_model=dict)
 async def update_ocr_result(
     case_id: int,
@@ -246,3 +291,32 @@ async def retry_document_ocr(
     process_case_documents.delay(case_id)
 
     return {"message": "已重新触发OCR处理", "document_id": document_id}
+
+
+@router.get("/{case_id}/documents/{document_id}/analysis", response_model=dict)
+async def get_document_analysis(
+    case_id: int,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Case).where(and_(Case.id == case_id, Case.user_id == current_user.id))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    doc_result = await db.execute(
+        select(CaseDocument).where(and_(CaseDocument.id == document_id, CaseDocument.case_id == case_id))
+    )
+    document = doc_result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    return {
+        "document_id": document_id,
+        "analysis_done": document.analysis_done or False,
+        "document_analysis": document.document_analysis or "",
+        "document_name": document.original_name,
+    }

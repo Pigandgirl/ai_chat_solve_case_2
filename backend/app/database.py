@@ -53,3 +53,9 @@ async def init_db():
             await asyncio.sleep(1)
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE case_documents ADD COLUMN IF NOT EXISTS category VARCHAR(100)"
+        ))
+        await conn.execute(text(
+            "UPDATE case_documents SET category = '1_财政厅移交材料' WHERE category IS NULL"
+        ))

@@ -47,7 +47,10 @@ class CaseDocumentResponse(BaseModel):
     ocr_confidence: float
     page_count: int
     is_scanned: bool
+    category: Optional[str] = None
     error_message: Optional[str] = None
+    analysis_done: bool = False
+    document_analysis: Optional[str] = ""
     uploaded_at: Optional[datetime] = None
 
     class Config:

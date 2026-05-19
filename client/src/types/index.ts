@@ -38,7 +38,10 @@ export interface DocumentItem {
   ocr_confidence: number;
   page_count: number;
   is_scanned: boolean;
+  category?: string;
   error_message?: string | null;
+  analysis_done?: boolean;
+  document_analysis?: string;
   uploaded_at: string;
 }
 
@@ -112,4 +115,11 @@ export interface OCRResultResponse {
     text: string;
     confidence: number;
   }>;
+}
+
+export interface PageAnalysisResponse {
+  document_id: number;
+  analysis_done: boolean;
+  document_analysis: string;
+  document_name: string;
 }

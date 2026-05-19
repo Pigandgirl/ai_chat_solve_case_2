@@ -18,7 +18,10 @@ class CaseDocument(Base):
     ocr_confidence = Column(Float, default=0.0)
     page_count = Column(Integer, default=0)
     is_scanned = Column(Boolean, default=False)
+    category = Column(String(100), default="1_财政厅移交材料", nullable=True)
     error_message = Column(Text, nullable=True)
+    analysis_done = Column(Boolean, default=False)
+    document_analysis = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, server_default=func.now())
 
     case = relationship("Case", back_populates="documents")

@@ -153,11 +153,59 @@ def process_case_documents(self, case_id: int):
                     overall_confidences.append(ocr_result["overall_confidence"])
                     total_ocr_pages += ocr_result["total_pages"]
 
-                    doc_pct = 10 + int(60 * pages_completed / max(total_pages_all, 1))
                     await _update_progress(
-                        case_id, "ocr_processing", min(doc_pct, 70),
+                        case_id, "ocr_processing", min(70, 10 + int(60 * pages_completed / max(total_pages_all, 1))),
                         f"已完成文档: {doc_name} ({idx + 1}/{total_docs})"
                     )
+
+                    try:
+                        analysis_pct = min(72, 70 + int(2 * (idx + 1) / max(total_docs, 1)))
+                        await _update_progress(case_id, "ocr_processing", analysis_pct,
+                                               f"正在AI分析文档: {doc_name} ({(idx + 1)}/{total_docs})")
+
+                        page_texts = []
+                        for page in ocr_result.get("pages", []):
+                            text = page.get("text", "").strip()
+                            if text:
+                                page_texts.append(f"--- 第{page.get('page_num', '?')}页 ---\n{text}")
+                        all_text = "\n\n".join(page_texts)
+
+                        if all_text and len(all_text) > 50:
+                            analysis_system = (
+                                "你是一位资深法律案件分析专家，服务于粤省法智能辅助办案系统。"
+                                "请基于文档内容进行专业分析，提取核心信息。"
+                                "如果文档中缺少某类信息，如实说明'文档未明确提及'。"
+                                "分析须严谨、客观，不要编造不存在的事实。"
+                            )
+                            analysis_prompt = (
+                                f"请分析以下文档，该文档属于「{doc.get('category', '未知分类')}」分类：\n\n"
+                                f"【文档名称】{doc_name}\n"
+                                f"【总页数】{ocr_result.get('total_pages', 0)}页\n\n"
+                                f"【文档内容】\n{all_text[:8000]}\n\n"
+                                "请按以下结构进行完整分析：\n"
+                                "1. **文档概要**：用2-3句话概括本文档的核心内容和性质\n"
+                                "2. **核心事实**：本文档陈述的主要事实、主张或发现\n"
+                                "3. **涉及主体**：本页提到的企业、机构、人员及其角色\n"
+                                "4. **关键数据/日期/金额**：出现的重要数字、金额、日期等\n"
+                                "5. **法律依据/政策引用**：引用的法律法规条款或政策文件\n"
+                                "6. **与其他材料的关联**：本文档与其他材料目录的关联性说明\n\n"
+                                "请用简洁的要点形式输出，每段控制在80字以内。"
+                            )
+                            analysis_messages = [
+                                {"role": "system", "content": analysis_system},
+                                {"role": "user", "content": analysis_prompt},
+                            ]
+                            doc_analysis = await llm_client.chat(analysis_messages, max_tokens=2048, temperature=0.3)
+                            import re as _re2
+                            doc_analysis = _re2.sub(r'<think>.*?</think>', '', doc_analysis, flags=_re2.DOTALL).strip()
+
+                            await conn.execute(
+                                "UPDATE case_documents SET analysis_done = TRUE, document_analysis = $1 WHERE id = $2",
+                                doc_analysis, doc_id
+                            )
+                            logger.info(f"[Task] Document analysis completed for doc {doc_id}: {doc_name}")
+                    except Exception as ae:
+                        logger.warning(f"[Task] Document analysis failed for doc {doc_id}: {ae}")
 
                 except Exception as doc_error:
                     logger.error(f"[Task] Error processing doc {doc_id}: {doc_error}")

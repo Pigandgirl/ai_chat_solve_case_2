@@ -37,7 +37,10 @@ CREATE TABLE IF NOT EXISTS case_documents (
     ocr_confidence FLOAT DEFAULT 0,
     page_count INTEGER DEFAULT 0,
     is_scanned BOOLEAN DEFAULT FALSE,
+    category VARCHAR(100) DEFAULT '1_财政厅移交材料',
     error_message TEXT,
+    analysis_done BOOLEAN DEFAULT FALSE,
+    document_analysis TEXT,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

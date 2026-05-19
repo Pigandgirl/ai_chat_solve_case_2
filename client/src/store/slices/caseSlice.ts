@@ -104,10 +104,22 @@ const caseSlice = createSlice({
         }
       }
       if (state.currentCase && state.currentCase.id === case_id) {
+        state.currentCase.progress = progress;
+        state.currentCase.status = status;
+        if (message !== undefined) state.currentCase.processing_message = message;
+        if (case_name !== undefined) state.currentCase.case_name = case_name;
+        if (summary !== undefined) state.currentCase.summary = summary;
         if (complainant !== undefined) state.currentCase.complainant = complainant;
         if (respondent !== undefined) state.currentCase.respondent = respondent;
         if (project_info !== undefined) state.currentCase.project_info = project_info;
         if (complaint_items !== undefined) state.currentCase.complaint_items = complaint_items;
+        state.currentCase.processing_status = {
+          case_id,
+          status: status,
+          progress,
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        };
       }
     },
   },

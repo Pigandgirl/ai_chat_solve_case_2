@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User, CaseItem, LoginData, RegisterData, UploadResponse, OCRResultResponse } from '../types';
+import { User, CaseItem, LoginData, RegisterData, UploadResponse, OCRResultResponse, PageAnalysisResponse } from '../types';
 
 const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
@@ -51,11 +51,14 @@ export const caseAPI = {
 };
 
 export const documentAPI = {
-  uploadDocuments: (caseId: number, files: File[]) => {
+  uploadDocuments: (caseId: number, files: File[], category?: string) => {
     const formData = new FormData();
     files.forEach((file) => {
       formData.append('files', file);
     });
+    if (category) {
+      formData.append('category', category);
+    }
     return axiosInstance.post<UploadResponse>(`/cases/${caseId}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -68,6 +71,12 @@ export const documentAPI = {
     axiosInstance.put(`/cases/${caseId}/documents/${documentId}/ocr`, correctedOcr),
   retryDocumentOCR: (caseId: number, documentId: number) =>
     axiosInstance.post(`/cases/${caseId}/retry-document/${documentId}`),
+  analyzePage: (caseId: number, documentId: number) =>
+    axiosInstance.get<PageAnalysisResponse>(`/cases/${caseId}/documents/${documentId}/analysis`),
+  getDocumentFile: (caseId: number, documentId: number) =>
+    axiosInstance.get(`/cases/${caseId}/documents/${documentId}/file`, {
+      responseType: 'blob',
+    }),
 };
 
 export const saveToken = (token: string) => {

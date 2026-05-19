@@ -29,6 +29,23 @@ const Workbench = () => {
   const [uploadStage, setUploadStage] = useState('');
   const [uploadErrors, setUploadErrors] = useState<Array<{ file: string; error: string }>>([]);
 
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [resumeCase, setResumeCase] = useState<CaseItem | null>(null);
+  const [resumeCategory, setResumeCategory] = useState('');
+  const [resumeFiles, setResumeFiles] = useState<File[]>([]);
+  const [isResumeUploading, setIsResumeUploading] = useState(false);
+  const [resumeUploadProgress, setResumeUploadProgress] = useState(0);
+  const [resumeUploadStage, setResumeUploadStage] = useState('');
+  const [showResumeContinuePrompt, setShowResumeContinuePrompt] = useState(false);
+
+  const RESUME_CATEGORIES = [
+    { key: '1_财政厅移交材料', label: '财政厅移交材料' },
+    { key: '2_代理机构答复', label: '代理机构答复' },
+    { key: '3_采购人答复', label: '采购人答复' },
+    { key: '4_相关供应商答复', label: '相关供应商答复' },
+    { key: '5_评审材料', label: '评审材料' },
+  ];
+
   const processingCases = useRef<Set<number>>(new Set());
   const wsConnections = useRef<Map<number, WebSocket>>(new Map());
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -223,6 +240,75 @@ const Workbench = () => {
       setUploadStage(`上传失败: ${error.response?.data?.detail || error.message}`);
       setIsUploading(false);
     }
+  };
+
+  const handleResumeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const pdfFiles = files.filter(f => f.type === 'application/pdf');
+    const nonPdfFiles = files.filter(f => f.type !== 'application/pdf');
+
+    if (nonPdfFiles.length > 0) {
+      alert(`以下文件不是 PDF 格式，已忽略：${nonPdfFiles.map(f => f.name).join(', ')}`);
+    }
+
+    if (resumeFiles.length + pdfFiles.length > 10) {
+      alert('最多只能上传 10 个文件');
+      return;
+    }
+
+    const oversized = pdfFiles.filter(f => f.size > 50 * 1024 * 1024);
+    if (oversized.length > 0) {
+      alert(`以下文件超过 50MB，已忽略：${oversized.map(f => f.name).join(', ')}`);
+    }
+
+    const validFiles = pdfFiles.filter(f => f.size <= 50 * 1024 * 1024);
+    setResumeFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const handleResumeRemoveFile = (index: number) => {
+    setResumeFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleResumeUpload = async () => {
+    if (!resumeCase || resumeFiles.length === 0 || !resumeCategory) return;
+
+    setIsResumeUploading(true);
+    setResumeUploadProgress(0);
+
+    try {
+      setResumeUploadStage('正在上传文件...');
+      setResumeUploadProgress(10);
+
+      await documentAPI.uploadDocuments(resumeCase.id, resumeFiles, resumeCategory);
+
+      setResumeUploadProgress(100);
+      setResumeUploadStage('上传完成');
+
+      await dispatch(fetchCases());
+
+      setShowResumeContinuePrompt(true);
+      setIsResumeUploading(false);
+      setResumeUploadProgress(0);
+      setResumeUploadStage('');
+
+    } catch (error: any) {
+      setResumeUploadStage(`上传失败: ${error.response?.data?.detail || error.message}`);
+      setIsResumeUploading(false);
+    }
+  };
+
+  const handleResumeContinue = () => {
+    setResumeFiles([]);
+    setResumeCategory('');
+    setShowResumeContinuePrompt(false);
+  };
+
+  const handleResumeStop = () => {
+    setShowResumeModal(false);
+    setResumeFiles([]);
+    setResumeCategory('');
+    setShowResumeContinuePrompt(false);
+    setResumeCase(null);
   };
 
   const handleNewCase = async () => {
@@ -504,9 +590,9 @@ const Workbench = () => {
                 <h2 className="text-lg font-bold text-gray-800">我的案件信息</h2>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
               <table className="w-full">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-gradient-to-r from-blue-50 to-indigo-50">
                     <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">案件状态</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">案件类型</th>
@@ -589,6 +675,20 @@ const Workbench = () => {
                                   上传文档
                                 </button>
                               )}
+                              {caseItem.documents && caseItem.documents.length > 0 && caseItem.case_type === '招标投诉' && (
+                                <button
+                                  onClick={() => {
+                                    setResumeCase(caseItem);
+                                    setResumeCategory('');
+                                    setResumeFiles([]);
+                                    setShowResumeContinuePrompt(false);
+                                    setShowResumeModal(true);
+                                  }}
+                                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-lg hover:from-purple-700 hover:to-violet-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                >
+                                  续传
+                                </button>
+                              )}
                               {caseItem.documents && caseItem.documents.length > 0 && (
                                 <div className="relative">
                                   <button
@@ -601,57 +701,7 @@ const Workbench = () => {
                                     </svg>
                                   </button>
                                   {expandedMenuCaseId === caseItem.id && (
-                                    <div className="dropdown-menu absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-20">
-                                      <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                        已上传文档 ({caseItem.documents.length})
-                                      </div>
-                                      {caseItem.documents.map((doc) => (
-                                        <div key={doc.id} className="px-4 py-2 hover:bg-gray-50">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-sm text-gray-700 truncate flex-1">{doc.original_name}</span>
-                                            {doc.ocr_done ? (
-                                              <button
-                                                onClick={() => {
-                                                  navigate(`/case/${caseItem.id}/document/${doc.id}/ocr-verify`);
-                                                  setExpandedMenuCaseId(null);
-                                                }}
-                                                className="text-xs text-blue-600 hover:text-blue-700 font-medium underline"
-                                              >
-                                                查看/修正
-                                              </button>
-                                            ) : doc.error_message ? (
-                                              <button
-                                                onClick={() => handleRetryDocument(caseItem.id, doc.id)}
-                                                className="text-xs text-orange-600 hover:text-orange-700 font-medium"
-                                              >
-                                                重试
-                                              </button>
-                                            ) : (
-                                              <span className="text-xs text-blue-500">处理中</span>
-                                            )}
-                                          </div>
-                                          <div className="text-xs text-gray-400 mt-0.5">
-                                            {formatFileSize(doc.file_size)} | {doc.page_count}页
-                                            {doc.ocr_done && doc.ocr_confidence > 0 && (
-                                              <span className="ml-2">置信度: {(doc.ocr_confidence * 100).toFixed(1)}%</span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      <div className="h-px bg-gray-100 my-2"></div>
-                                      <button
-                                        onClick={() => {
-                                          setSelectedCase(caseItem);
-                                          setShowUploadModal(true);
-                                          setExpandedMenuCaseId(null);
-                                        }}
-                                        className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-blue-50 transition-colors flex items-center gap-3"
-                                      >
-                                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                        </svg>
-                                        继续上传
-                                      </button>
+                                    <div className="dropdown-menu absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-20">
                                       <button
                                         onClick={() => handleDeleteCase(caseItem.id)}
                                         className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-3"
@@ -866,6 +916,158 @@ const Workbench = () => {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showResumeModal && resumeCase && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-violet-600 p-6">
+              <h2 className="text-xl font-bold text-white">续传文档</h2>
+              <p className="text-purple-100 text-sm mt-1">案件：{resumeCase.case_name}</p>
+            </div>
+            <div className="p-6">
+              {!isResumeUploading && !showResumeContinuePrompt ? (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">选择目录 <span className="text-red-500">*</span></label>
+                    <select
+                      value={resumeCategory}
+                      onChange={(e) => {
+                        setResumeCategory(e.target.value);
+                        setResumeFiles([]);
+                      }}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all bg-white text-sm"
+                    >
+                      <option value="">请选择上传目录</option>
+                      {RESUME_CATEGORIES.map((cat) => (
+                        <option key={cat.key} value={cat.key}>{cat.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {resumeCategory && (
+                    <>
+                      <div
+                        className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-purple-500 hover:bg-purple-50/30 transition-all duration-300 cursor-pointer"
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-purple-500', 'bg-purple-50/30'); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-purple-500', 'bg-purple-50/30'); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-purple-500', 'bg-purple-50/30');
+                          const files = Array.from(e.dataTransfer.files);
+                          const event = { target: { files } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                          handleResumeFileChange(event);
+                        }}
+                      >
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleResumeFileChange}
+                          className="hidden"
+                          id="resume-file-upload"
+                          accept=".pdf"
+                        />
+                        <label htmlFor="resume-file-upload" className="cursor-pointer">
+                          <div className="text-5xl mb-4">📄</div>
+                          <p className="text-gray-700 font-semibold text-lg">点击或拖拽 PDF 文件到此处</p>
+                          <p className="text-gray-400 mt-2">上传至：{RESUME_CATEGORIES.find(c => c.key === resumeCategory)?.label}</p>
+                          <p className="text-gray-400 text-xs mt-1">支持 PDF 格式，单文件 ≤50MB，最多 10 个文件</p>
+                        </label>
+                      </div>
+
+                      {resumeFiles.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-700">已选择 {resumeFiles.length}/10 个文件：</h3>
+                            <button
+                              onClick={() => setResumeFiles([])}
+                              className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+                            >
+                              清空
+                            </button>
+                          </div>
+                          {resumeFiles.map((file, index) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-red-600 font-bold text-xs">PDF</span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                  <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleResumeRemoveFile(index)}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-2"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : showResumeContinuePrompt ? (
+                <div className="py-8 text-center">
+                  <div className="text-5xl mb-4">✅</div>
+                  <p className="text-lg font-semibold text-gray-800 mb-2">上传成功！</p>
+                  <p className="text-gray-600 mb-6">是否继续上传文档材料？</p>
+                  <div className="flex justify-center gap-4">
+                    <button
+                      onClick={handleResumeContinue}
+                      className="px-8 py-2.5 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-xl hover:from-purple-700 hover:to-violet-700 transition-colors font-semibold shadow-lg hover:shadow-xl"
+                    >
+                      是，继续上传
+                    </button>
+                    <button
+                      onClick={handleResumeStop}
+                      className="px-8 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
+                    >
+                      否，完成
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8">
+                  <div className="text-center mb-6">
+                    <ProgressRing progress={resumeUploadProgress} size={96} />
+                    <p className="text-lg font-semibold text-gray-700 mt-4">{resumeUploadStage}</p>
+                    <p className="text-sm text-purple-600 mt-2">
+                      文件上传完成后自动触发后台 OCR 识别...
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!isResumeUploading && !showResumeContinuePrompt && (
+              <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowResumeModal(false);
+                    setResumeFiles([]);
+                    setResumeCategory('');
+                    setResumeCase(null);
+                  }}
+                  className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleResumeUpload}
+                  disabled={!resumeCategory || resumeFiles.length === 0}
+                  className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-xl hover:from-purple-700 hover:to-violet-700 transition-colors font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  上传 ({resumeFiles.length})
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

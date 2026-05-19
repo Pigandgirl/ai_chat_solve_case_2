@@ -61,7 +61,10 @@ def doc_to_dict(doc) -> dict:
         "ocr_confidence": doc.ocr_confidence or 0.0,
         "page_count": doc.page_count or 0,
         "is_scanned": doc.is_scanned or False,
+        "category": doc.category or "1_财政厅移交材料",
         "error_message": doc.error_message,
+        "analysis_done": doc.analysis_done or False,
+        "document_analysis": doc.document_analysis or "",
         "uploaded_at": _safe_isoformat(doc, "uploaded_at"),
     }
 
