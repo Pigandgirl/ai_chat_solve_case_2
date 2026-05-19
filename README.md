@@ -1,8 +1,3 @@
-
-# 粤省法智能辅助办案系统
-
-当前功能 PDF 文档上传、OCR 识别、AI 文档分析、向量知识库构建与 RAG 法律问答。
-
 ## 功能特性
 
 ### 1. 用户认证
@@ -15,13 +10,13 @@
 - 案件列表展示（表头固定、支持垂直滚动）
 - 多维度筛选（名称、关键词、类型、日期范围）
 - 新建案件 / 上传文档
-- 续传文档（按目录分类上传：财政厅移交材料、代理机构答复、采购人答复、相关供应商答复、评审材料）
+- 续传文档
 - 删除案件
 - 案件处理进度实时可视化（WebSocket + Redis Pub/Sub）
 
 ### 3. 案件详情分析
 - **材料文档** — react-pdf 在线预览，滚轮自动翻页加载下一份/上一份文档
-- **案件要素** — AI 自动提取投诉企业、被投诉企业、项目信息、投诉事项
+- **案件要素** — AI 自动提取
 - **AI 信息分析** — 上传阶段预计算文档级分析，前端静态渲染（零等待）
 - **法律法规匹配** — 基于 RAG 的法律智能问答（流式/普通两种输出模式）
 - **答复归纳** — 待完善
@@ -82,50 +77,7 @@
 | ASGI 服务器 | Uvicorn |
 | 前端 Web 服务器 | Nginx (生产环境) |
 
-## 项目结构
 
-```
-ai_chat_solve_case_2/
-├── client/                          # React 前端
-│   ├── public/
-│   ├── nginx/                       # Nginx 生产配置
-│   └── src/
-│       ├── api/                     # API 接口封装
-│       ├── pages/                   # 页面组件
-│       │   ├── Login.tsx            # 登录
-│       │   ├── Register.tsx         # 注册
-│       │   ├── Workbench.tsx        # 工作台首页
-│       │   ├── CaseDetail.tsx       # 案件详情（PDF 查看 + AI 分析）
-│       │   ├── Dashboard.tsx        # 数据仪表盘
-│       │   ├── Admin.tsx            # 后台管理（用户/案件/审计）
-│       │   └── OCRVerification.tsx  # OCR 校验
-│       ├── store/slices/            # Redux 状态切片
-│       └── types/                   # TypeScript 类型定义
-├── backend/                         # Python FastAPI 后端
-│   ├── app/
-│   │   ├── api/                     # API 路由
-│   │   │   ├── auth.py             # 用户认证
-│   │   │   ├── cases.py            # 案件管理
-│   │   │   ├── documents.py        # 文档管理
-│   │   │   ├── admin.py            # 后台管理
-│   │   │   └── dashboard.py        # 仪表盘
-│   │   ├── models/                  # SQLAlchemy 数据模型
-│   │   │   ├── user.py             # 用户模型
-│   │   │   ├── case.py             # 案件模型
-│   │   │   └── audit_log.py        # 审计日志模型
-│   │   ├── schemas/                 # Pydantic 数据验证
-│   │   ├── services/                # 业务逻辑层
-│   │   ├── tasks/                   # Celery 异步任务
-│   │   ├── middleware/              # JWT 认证中间件
-│   │   ├── utils/                   # 工具函数
-│   │   ├── database.py              # 数据库连接
-│   │   └── config.py                # 配置
-│   ├── Dockerfile
-│   └── requirements.txt
-├── docker-compose.yml               # Docker 编排（根目录）
-├── monitor.py                        # 系统监控脚本
-└── README.md
-```
 
 ## 快速开始
 
@@ -166,12 +118,6 @@ npm start
 | API 文档 | http://localhost:8000/docs |
 | MinIO 控制台 | http://localhost:9001 |
 
-### 预置测试账号
-
-| 用户名 | 密码 | 角色 |
-|--------|------|------|
-| `admin` | `admin123` | 管理员 |
-
 ## 开发流程
 
 1. 访问登录页面进行登录
@@ -201,7 +147,6 @@ npm start
 
 ## 待完善功能
 
-- [ ] 短信验证码登录
 - [ ] 法律法规匹配模块
 - [ ] 证据审查模块
 - [ ] 文书生成模块
