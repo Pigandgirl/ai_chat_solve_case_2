@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import auth_router, cases_router, documents_router, websocket_router
+from .api import admin_router, auth_router, cases_router, dashboard_router, documents_router, websocket_router
 from .database import init_db
 from .services.minio_service import minio_service
 
@@ -43,14 +43,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(admin_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(cases_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
 app.include_router(websocket_router)
 

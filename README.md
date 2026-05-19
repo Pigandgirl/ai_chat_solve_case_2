@@ -39,6 +39,16 @@
 - 每个案件独立向量集合
 - 支持相似度检索 + 引用片段
 
+### 6. 数据仪表盘
+- 案件总数、用户总数、文档总数、处理中文档数等核心指标卡片
+- 案件类型分布可视化
+- 近期案件处理趋势统计
+
+### 7. 后台管理
+- **用户管理** — 查看所有注册用户、启用/禁用用户账号
+- **案件管理** — 全局案件列表，支持管理员删除任意案件
+- **用户审计** — 操作日志完整记录（登录系统、上传文档、续传文档、删除文档、办理案件、筛选查询、下载文书），支持 20/50/100 条分页
+
 ## 技术栈
 
 ### 前端
@@ -70,38 +80,50 @@
 |------|------|
 | 容器化 | Docker + Docker Compose |
 | ASGI 服务器 | Uvicorn |
+| 前端 Web 服务器 | Nginx (生产环境) |
 
 ## 项目结构
 
 ```
 ai_chat_solve_case_2/
-├── client/                       # React 前端
+├── client/                          # React 前端
 │   ├── public/
+│   ├── nginx/                       # Nginx 生产配置
 │   └── src/
-│       ├── api/                  # API 接口封装
-│       ├── pages/                # 页面组件
-│       │   ├── Login.tsx         # 登录
-│       │   ├── Register.tsx      # 注册
-│       │   ├── Workbench.tsx     # 工作台首页
-│       │   ├── CaseDetail.tsx    # 案件详情（PDF 查看 + AI 分析）
-│       │   └── OCRVerification.tsx # OCR 校验
-│       ├── store/slices/         # Redux 状态切片
-│       └── types/                # TypeScript 类型定义
-├── backend/                      # Python FastAPI 后端
+│       ├── api/                     # API 接口封装
+│       ├── pages/                   # 页面组件
+│       │   ├── Login.tsx            # 登录
+│       │   ├── Register.tsx         # 注册
+│       │   ├── Workbench.tsx        # 工作台首页
+│       │   ├── CaseDetail.tsx       # 案件详情（PDF 查看 + AI 分析）
+│       │   ├── Dashboard.tsx        # 数据仪表盘
+│       │   ├── Admin.tsx            # 后台管理（用户/案件/审计）
+│       │   └── OCRVerification.tsx  # OCR 校验
+│       ├── store/slices/            # Redux 状态切片
+│       └── types/                   # TypeScript 类型定义
+├── backend/                         # Python FastAPI 后端
 │   ├── app/
-│   │   ├── api/                  # API 路由
-│   │   ├── models/               # SQLAlchemy 数据模型
-│   │   ├── schemas/              # Pydantic 数据验证
-│   │   ├── services/             # 业务逻辑层
-│   │   ├── tasks/                # Celery 异步任务
-│   │   ├── middleware/           # JWT 认证中间件
-│   │   ├── database.py           # 数据库连接
-│   │   └── config.py             # 配置
-│   ├── docker-compose.yml        # Docker 编排
+│   │   ├── api/                     # API 路由
+│   │   │   ├── auth.py             # 用户认证
+│   │   │   ├── cases.py            # 案件管理
+│   │   │   ├── documents.py        # 文档管理
+│   │   │   ├── admin.py            # 后台管理
+│   │   │   └── dashboard.py        # 仪表盘
+│   │   ├── models/                  # SQLAlchemy 数据模型
+│   │   │   ├── user.py             # 用户模型
+│   │   │   ├── case.py             # 案件模型
+│   │   │   └── audit_log.py        # 审计日志模型
+│   │   ├── schemas/                 # Pydantic 数据验证
+│   │   ├── services/                # 业务逻辑层
+│   │   ├── tasks/                   # Celery 异步任务
+│   │   ├── middleware/              # JWT 认证中间件
+│   │   ├── utils/                   # 工具函数
+│   │   ├── database.py              # 数据库连接
+│   │   └── config.py                # 配置
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   └── init_db.sql               # 数据库初始化 DDL
-├── server/                       # 早期 Express 后端（已废弃）
+│   └── requirements.txt
+├── docker-compose.yml               # Docker 编排（根目录）
+├── monitor.py                        # 系统监控脚本
 └── README.md
 ```
 
@@ -115,11 +137,11 @@ ai_chat_solve_case_2/
 ### Docker 一键启动（推荐）
 
 ```bash
-cd backend
+# 在项目根目录执行
 docker compose up -d
 ```
 
-启动 6 个服务：postgres、redis、minio、celery_worker、fastapi、smoke_test。
+启动 6 个服务：postgres、redis、minio、celery_worker、fastapi、frontend。
 
 ### 本地开发
 
@@ -139,16 +161,16 @@ npm start
 
 | 服务 | 地址 |
 |------|------|
-| 前端 | http://localhost:3010 |
+| 前端 | http://localhost:3000 |
 | API | http://localhost:8000 |
 | API 文档 | http://localhost:8000/docs |
 | MinIO 控制台 | http://localhost:9001 |
 
 ### 预置测试账号
 
-| 用户名 | 密码 |
-|--------|------|
-| `admin` | `admin123` |
+| 用户名 | 密码 | 角色 |
+|--------|------|------|
+| `admin` | `admin123` | 管理员 |
 
 ## 开发流程
 
@@ -160,6 +182,8 @@ npm start
 6. 案件完成后点击"办理"进入详情页面
 7. 详情页可查看原始 PDF、案件要素、AI 分析结果
 8. 低置信度 OCR 文本可人工校验修正
+9. 管理员可访问仪表盘查看系统数据概览
+10. 管理员可通过后台管理查看用户、案件和审计日志
 
 ## 环境变量
 
@@ -173,6 +197,7 @@ npm start
 | `SILICONFLOW_API_KEY` | OCR / Embedding API Key |
 | `MINIMAX_API_KEY` | LLM API Key |
 | `JWT_SECRET` | JWT 签名密钥 |
+| `CHROMA_PERSIST_DIR` | ChromaDB 持久化目录 |
 
 ## 待完善功能
 

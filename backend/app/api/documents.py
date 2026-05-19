@@ -13,6 +13,7 @@ from ..models.case import Case
 from ..models.document import CaseDocument
 from ..models.processing_status import CaseProcessingStatus
 from ..models.user import User
+from ..models.audit_log import AuditLog
 from ..schemas.case import CaseDocumentResponse, CorrectedOCRRequest
 from ..services.minio_service import minio_service
 from ..services.ocr_service import ocr_service
@@ -121,6 +122,9 @@ async def upload_documents(
     if uploaded_docs:
         process_case_documents.delay(case_id)
 
+    audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="上传文档")
+    db.add(audit_log)
+
     doc_result = await db.execute(
         select(CaseDocument).where(CaseDocument.case_id == case_id)
     )
@@ -221,6 +225,9 @@ async def get_document_file(
     except Exception:
         raise HTTPException(status_code=404, detail="原始文件不存在或已损坏")
 
+    audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="下载文书")
+    db.add(audit_log)
+
     return StreamingResponse(
         BytesIO(file_content),
         media_type=document.file_type or "application/pdf",
@@ -287,6 +294,9 @@ async def retry_document_ocr(
     document.ocr_done = False
     document.error_message = None
     await db.flush()
+
+    audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="续传文档")
+    db.add(audit_log)
 
     process_case_documents.delay(case_id)
 

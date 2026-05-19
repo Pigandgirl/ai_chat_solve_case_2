@@ -8,6 +8,8 @@ import Register from './pages/Register';
 import Workbench from './pages/Workbench';
 import CaseDetail from './pages/CaseDetail';
 import OCRVerification from './pages/OCRVerification';
+import Dashboard from './pages/Dashboard';
+import Admin from './pages/Admin';
 import TestAPI from './pages/Test';
 
 function App() {
@@ -26,6 +28,8 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/workbench" element={<Workbench />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/admin" element={<Admin />} />
       <Route path="/case/:id" element={<CaseDetail />} />
       <Route path="/case/:caseId/document/:documentId/ocr-verify" element={<OCRVerification />} />
       <Route path="/" element={<Navigate to="/login" />} />

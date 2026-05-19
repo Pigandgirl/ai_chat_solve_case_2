@@ -17,11 +17,12 @@ class AuthService:
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
-    def create_token(user_id: int, username: str) -> str:
+    def create_token(user_id: int, username: str, role: str = "user") -> str:
         expire = datetime.utcnow() + timedelta(seconds=settings.JWT_EXPIRES_IN)
         payload = {
             "sub": str(user_id),
             "username": username,
+            "role": role,
             "exp": expire,
             "iat": datetime.utcnow(),
         }

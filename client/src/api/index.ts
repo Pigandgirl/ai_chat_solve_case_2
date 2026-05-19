@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { User, CaseItem, LoginData, RegisterData, UploadResponse, OCRResultResponse, PageAnalysisResponse } from '../types';
 
-const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+const baseURL = process.env.REACT_APP_API_URL || '/api';
 
 const axiosInstance = axios.create({
   baseURL,
@@ -77,6 +77,24 @@ export const documentAPI = {
     axiosInstance.get(`/cases/${caseId}/documents/${documentId}/file`, {
       responseType: 'blob',
     }),
+};
+
+export const dashboardAPI = {
+  getStats: () => axiosInstance.get('/dashboard/stats'),
+};
+
+export const adminAPI = {
+  listUsers: (search?: string) => axiosInstance.get('/admin/users', { params: search ? { search } : {} }),
+  updateUser: (userId: number, data: { username?: string; phone?: string; role?: string }) =>
+    axiosInstance.put(`/admin/users/${userId}`, data),
+  changeUserPassword: (userId: number, data: { admin_password: string; new_password: string }) =>
+    axiosInstance.put(`/admin/users/${userId}/password`, data),
+  deleteUser: (userId: number) => axiosInstance.delete(`/admin/users/${userId}`),
+  listAllCases: (params?: { search?: string; case_type?: string }) =>
+    axiosInstance.get('/admin/cases', { params }),
+  deleteCase: (caseId: number) => axiosInstance.delete(`/admin/cases/${caseId}`),
+  listAuditLogs: (params?: { page?: number; page_size?: number }) =>
+    axiosInstance.get('/admin/audit-logs', { params }),
 };
 
 export const saveToken = (token: string) => {

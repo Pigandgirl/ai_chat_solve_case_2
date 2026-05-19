@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ..database import get_db, get_sync_db, sync_engine, Base
+from ..database import get_db, async_engine
 from ..models.user import User
+from ..models.audit_log import AuditLog
 from ..schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse
 from ..services.auth_service import auth_service
 
@@ -25,12 +26,13 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
         password=auth_service.hash_password(data.password),
         phone=data.phone,
         email=None,
+        role="user",
     )
     db.add(user)
     await db.flush()
     await db.refresh(user)
 
-    token = auth_service.create_token(user.id, user.username)
+    token = auth_service.create_token(user.id, user.username, user.role)
 
     return {
         "message": "Registration successful",
@@ -41,10 +43,9 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login")
 async def login(data: UserLogin):
-    from sqlalchemy.orm import Session
-    with sync_engine.connect() as conn:
-        from sqlalchemy import text
-        result = conn.execute(text("SELECT * FROM users WHERE username = :username"), {"username": data.username})
+    from sqlalchemy import text
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text("SELECT * FROM users WHERE username = :username"), {"username": data.username})
         row = result.fetchone()
         
         if not row:
@@ -57,14 +58,21 @@ async def login(data: UserLogin):
             "phone": row[3],
             "email": row[4],
             "created_at": row[5],
-            "updated_at": row[6]
+            "updated_at": row[6],
+            "role": row[7] if len(row) > 7 else "user",
         }
         
         if not auth_service.verify_password(data.password, user_dict["password"]):
             raise HTTPException(status_code=401, detail="Invalid username or password")
         
-        token = auth_service.create_token(user_dict["id"], user_dict["username"])
-        
+        token = auth_service.create_token(user_dict["id"], user_dict["username"], user_dict["role"])
+
+        await conn.execute(
+            text("INSERT INTO audit_logs (user_id, username, action) VALUES (:uid, :un, :act)"),
+            {"uid": user_dict["id"], "un": user_dict["username"], "act": "登录系统"}
+        )
+        await conn.commit()
+
         return {
             "message": "Login successful",
             "token": token,
@@ -73,6 +81,7 @@ async def login(data: UserLogin):
                 "username": user_dict["username"],
                 "phone": user_dict["phone"],
                 "email": user_dict["email"],
+                "role": user_dict["role"],
                 "created_at": str(user_dict["created_at"]) if user_dict["created_at"] else None
             }
         }
@@ -91,9 +100,9 @@ async def get_current_user_info(request: Request):
 
     user_id = int(payload.get("sub"))
 
-    with sync_engine.connect() as conn:
-        from sqlalchemy import text
-        result = conn.execute(text("SELECT id, username, phone, email, created_at FROM users WHERE id = :id"), {"id": user_id})
+    from sqlalchemy import text
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text("SELECT id, username, phone, email, role, created_at FROM users WHERE id = :id"), {"id": user_id})
         row = result.fetchone()
 
         if not row:
@@ -105,6 +114,7 @@ async def get_current_user_info(request: Request):
                 "username": row[1],
                 "phone": row[2],
                 "email": row[3],
-                "created_at": str(row[4]) if row[4] else None
+                "role": row[4],
+                "created_at": str(row[5]) if row[5] else None
             }
         }

@@ -56,3 +56,9 @@ __pycache__/
 # ChromaDB vector store
 chroma_db/
 uploads/
+
+# Logs
+logs/
+
+# AI assistant rules
+.trae/rules/

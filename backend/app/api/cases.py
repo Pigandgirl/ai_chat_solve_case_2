@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
@@ -8,6 +10,7 @@ from ..models.case import Case
 from ..models.document import CaseDocument
 from ..models.processing_status import CaseProcessingStatus
 from ..models.user import User
+from ..models.audit_log import AuditLog
 from ..schemas.case import CaseCreate, CaseUpdate, AnalyzeRequest
 from ..middleware.auth import get_current_user
 from ..services.vector_service import vector_service
@@ -86,6 +89,8 @@ async def get_cases(
     case_name: Optional[str] = Query(None),
     keywords: Optional[str] = Query(None),
     case_type: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -101,6 +106,18 @@ async def get_cases(
         )
     if case_type:
         conditions.append(Case.case_type == case_type)
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            conditions.append(Case.created_at >= start_dt)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            conditions.append(Case.created_at < end_dt)
+        except ValueError:
+            pass
 
     query = select(Case).where(and_(*conditions)).order_by(Case.created_at.desc())
     result = await db.execute(query)
@@ -118,6 +135,10 @@ async def get_cases(
         proc_status = status_result.scalar_one_or_none()
 
         items.append(case_to_dict(c, [doc_to_dict(d) for d in docs], status_to_dict(proc_status)))
+
+    if case_name or keywords or case_type or start_date or end_date:
+        audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="筛选查询")
+        db.add(audit_log)
 
     return {"items": items, "total": len(items)}
 
@@ -169,6 +190,9 @@ async def create_case(
     db.add(case_obj)
     await db.flush()
     await db.refresh(case_obj)
+
+    audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="办理案件")
+    db.add(audit_log)
 
     proc_status = CaseProcessingStatus(
         case_id=case_obj.id,
@@ -330,4 +354,8 @@ async def delete_case(
         raise HTTPException(status_code=404, detail="案件不存在")
 
     await db.delete(case_obj)
+
+    audit_log = AuditLog(user_id=current_user.id, username=current_user.username, action="删除文档")
+    db.add(audit_log)
+
     return {"message": "案件删除成功"}

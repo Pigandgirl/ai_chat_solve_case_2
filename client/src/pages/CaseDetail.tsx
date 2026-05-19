@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchCaseById, updateCaseProgress } from '../store/slices/caseSlice';
@@ -6,12 +6,18 @@ import { RootState, AppDispatch } from '../store';
 import { documentAPI } from '../api';
 import { WSProgressMessage } from '../types';
 import { Document, Page, pdfjs } from 'react-pdf';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/case';
+const getWsBaseUrl = () => {
+  if (process.env.REACT_APP_WS_URL) return process.env.REACT_APP_WS_URL;
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws/case`;
+};
 
 const CaseDetail = () => {
   const [activeTab, setActiveTab] = useState('case-elements');
@@ -54,7 +60,7 @@ const CaseDetail = () => {
     if (!id || !currentCase || currentCase.progress >= 100 || currentCase.status === '已完成') return;
 
     const caseId = parseInt(id);
-    const ws = new WebSocket(`${WS_URL}/${caseId}`);
+    const ws = new WebSocket(`${getWsBaseUrl()}/${caseId}`);
 
     ws.onopen = () => console.log(`[WS] CaseDetail connected to case ${caseId}`);
 
@@ -243,9 +249,16 @@ const CaseDetail = () => {
 
   const onDocumentLoadSuccess = useCallback(({ numPages: np }: { numPages: number }) => {
     setNumPages(np);
+    setLoadError(null);
   }, []);
 
-  const handleScroll = useCallback(() => {
+  const onDocumentLoadError = useCallback((error: Error) => {
+    console.error('[PDF] Document load error:', error);
+    setLoadError(`PDF 加载失败: ${error.message}`);
+    setPdfBlobRaw(null);
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     if (isSwitchingDocRef.current) return;
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -253,13 +266,16 @@ const CaseDetail = () => {
     const { scrollTop, scrollHeight, clientHeight } = el;
     if (scrollHeight <= clientHeight + 20) return;
 
-    const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
-    const atTop = scrollTop <= 10;
-
-    if (atBottom) {
-      handleNextDocument();
-    } else if (atTop) {
-      handlePrevDocument();
+    if (e.deltaY > 0) {
+      if (scrollTop + clientHeight >= scrollHeight - 1) {
+        e.preventDefault();
+        handleNextDocument();
+      }
+    } else if (e.deltaY < 0) {
+      if (scrollTop <= 0) {
+        e.preventDefault();
+        handlePrevDocument();
+      }
     }
   }, [handleNextDocument, handlePrevDocument]);
 
@@ -715,7 +731,7 @@ const CaseDetail = () => {
                       <div className="flex-1 min-w-0 relative">
                         <div
                           ref={scrollContainerRef}
-                          onScroll={handleScroll}
+                          onWheel={handleWheel}
                           className="h-full overflow-y-auto bg-[#525659]"
                         >
                           {pdfBlobRaw ? (
@@ -723,6 +739,7 @@ const CaseDetail = () => {
                               <Document
                                 file={pdfBlobRaw}
                                 onLoadSuccess={onDocumentLoadSuccess}
+                                onLoadError={onDocumentLoadError}
                                 loading={
                                   <div className="flex items-center justify-center py-32">
                                     <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
@@ -730,7 +747,7 @@ const CaseDetail = () => {
                                 }
                                 error={
                                   <div className="flex items-center justify-center h-full py-32">
-                                    <p className="text-gray-400">无法加载文档</p>
+                                    <p className="text-gray-400">PDF 无法解析，请确认文件格式</p>
                                   </div>
                                 }
                               >
@@ -751,11 +768,11 @@ const CaseDetail = () => {
                                 ))}
                               </Document>
                             </div>
-                          ) : (
+                          ) : selectedDocId && !pdfLoading && !loadError ? (
                             <div className="flex items-center justify-center h-full">
-                              <p className="text-gray-400">无法加载文档</p>
+                              <p className="text-gray-400">文档数据加载中...</p>
                             </div>
-                          )}
+                          ) : null}
                         </div>
                         {selectedDocId && orderedDocs.findIndex((d: any) => d.id === selectedDocId) > 0 && (
                           <button
@@ -806,8 +823,10 @@ const CaseDetail = () => {
                           </div>
                         ) : documentAnalysis.done && documentAnalysis.text ? (
                           <div className="p-4">
-                            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap document-analysis-content">
-                              {documentAnalysis.text}
+                            <div className="markdown-content">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {documentAnalysis.text}
+                              </ReactMarkdown>
                             </div>
                             <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
                               <span className="text-xs text-gray-400">MiniMax-M2.7-highspeed · 上传阶段自动分析</span>

@@ -3,6 +3,7 @@ export interface User {
   username: string;
   phone: string;
   email?: string;
+  role?: string;
   created_at?: string;
 }
 
@@ -122,4 +123,19 @@ export interface PageAnalysisResponse {
   analysis_done: boolean;
   document_analysis: string;
   document_name: string;
+}
+
+export interface DashboardStats {
+  total_users: number;
+  total_cases: number;
+  handling: number;
+  processing: number;
+  status_breakdown: {
+    pending: number;
+    processing: number;
+    completed: number;
+  };
+  province_distribution: Array<{ name: string; value: number }>;
+  region_count: number;
+  case_type_distribution: Array<{ name: string; value: number }>;
 }
