@@ -61,8 +61,8 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
-      SILICONFLOW_API_KEY: your_key
-      MINIMAX_API_KEY: your_key
+      SILICONFLOW_API_KEY: your_key_input_here
+      MINIMAX_API_KEY: your_key_input_here
       CHROMA_PERSIST_DIR: /app/app/chroma_db
     depends_on:
       postgres:
@@ -85,9 +85,9 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
-      JWT_SECRET: law_case_jwt_secret_2024
-      SILICONFLOW_API_KEY: your_key
-      MINIMAX_API_KEY: your_key
+      JWT_SECRET: your_key_input_here
+      SILICONFLOW_API_KEY: your_key_input_here
+      MINIMAX_API_KEY: your_key_input_here
       CHROMA_PERSIST_DIR: /app/app/chroma_db
     depends_on:
       postgres:

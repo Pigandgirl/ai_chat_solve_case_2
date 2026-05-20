@@ -1,8 +1,8 @@
 """Connectivity test: MiniMax LLM + SiliconFlow Embedding"""
 import asyncio, json, sys, os
 
-os.environ.setdefault("MINIMAX_API_KEY", "sk-cp-du8rGXgUamZFeQYdB32UU1UMltNMgLHUWHaAqEaYqEp_Yzaq9LfSc7pyJkOos-qxyOzLraPYc7Kochv5NIrN_LJ3a9Q_zro0WBjTd3qUqepkBL8idFCLz3s")
-os.environ.setdefault("SILICONFLOW_API_KEY", "sk-fhesusitigfmnrhxsfqvtbwwcddknqewpvjdqgssbpguzyod")
+os.environ.setdefault("MINIMAX_API_KEY", "your_key_input_here")
+os.environ.setdefault("SILICONFLOW_API_KEY", "your_key_input_here")
 MINIMAX_KEY = os.environ["MINIMAX_API_KEY"]
 SILICONFLOW_KEY = os.environ["SILICONFLOW_API_KEY"]
 

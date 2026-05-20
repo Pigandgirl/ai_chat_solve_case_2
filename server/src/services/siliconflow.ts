@@ -2,7 +2,7 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 
-const SILICONFLOW_API_KEY = 'sk-fhesusitigfmnrhxsfqvtbwwcddknqewpvjdqgssbpguzyod';
+const SILICONFLOW_API_KEY = 'your_key_input_here';
 const SILICONFLOW_BASE_URL = 'https://api.siliconflow.cn/v1';
 
 export class SiliconflowService {

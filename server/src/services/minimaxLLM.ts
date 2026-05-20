@@ -2,7 +2,7 @@ import axios from 'axios';
 import { siliconflowService } from './siliconflow';
 import { vectorDB } from './vectorDB';
 
-const MINIMAX_API_KEY = 'sk-cp-du8rGXgUamZFeQYdB32UU1UMltNMgLHUWHaAqEaYqEp_Yzaq9LfSc7pyJkOos-qxyOzLraPYc7Kochv5NIrN_LJ3a9Q_zro0WBjTd3qUqepkBL8idFCLz3s';
+const MINIMAX_API_KEY = 'your_key_input_here';
 const MINIMAX_BASE_URL = 'https://api.minimaxi.com/v1';
 const MINIMAX_MODEL = 'MiniMax-M2.7-highspeed';
 
