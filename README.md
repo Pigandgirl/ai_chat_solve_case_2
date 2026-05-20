@@ -1,3 +1,8 @@
+
+# 粤省法智能辅助办案系统
+
+法律文书智能分析平台，支持招标投诉、招标审查两类案件的 PDF 文档上传、OCR 识别、AI 文档分析、向量知识库构建与 RAG 法律问答。
+
 ## 功能特性
 
 ### 1. 用户认证
@@ -77,7 +82,84 @@
 | ASGI 服务器 | Uvicorn |
 | 前端 Web 服务器 | Nginx (生产环境) |
 
+## 项目结构
 
+```
+ai_chat_solve_case_2/
+├── client/                          # React 前端
+│   ├── public/
+│   ├── nginx/                       # Nginx 生产配置
+│   └── src/
+│       ├── api/                     # API 接口封装
+│       ├── pages/                   # 页面组件
+│       │   ├── Login.tsx            # 登录
+│       │   ├── Register.tsx         # 注册
+│       │   ├── Workbench.tsx        # 工作台首页
+│       │   ├── CaseDetail.tsx       # 案件详情（PDF 查看 + AI 分析）
+│       │   ├── Dashboard.tsx        # 数据仪表盘
+│       │   ├── Admin.tsx            # 后台管理（用户/案件/审计）
+│       │   └── OCRVerification.tsx  # OCR 校验
+│       ├── store/slices/            # Redux 状态切片
+│       └── types/                   # TypeScript 类型定义
+├── backend/                         # Python FastAPI 后端
+│   ├── app/
+│   │   ├── api/                     # API 路由
+│   │   │   ├── auth.py             # 用户认证
+│   │   │   ├── cases.py            # 案件管理
+│   │   │   ├── documents.py        # 文档管理
+│   │   │   ├── admin.py            # 后台管理
+│   │   │   └── dashboard.py        # 仪表盘
+│   │   ├── models/                  # SQLAlchemy 数据模型
+│   │   │   ├── user.py             # 用户模型
+│   │   │   ├── case.py             # 案件模型
+│   │   │   └── audit_log.py        # 审计日志模型
+│   │   ├── schemas/                 # Pydantic 数据验证
+│   │   ├── services/                # 业务逻辑层
+│   │   ├── tasks/                   # Celery 异步任务
+│   │   ├── middleware/              # JWT 认证中间件
+│   │   ├── utils/                   # 工具函数
+│   │   ├── database.py              # 数据库连接
+│   │   └── config.py                # 配置
+│   ├── Dockerfile
+│   └── requirements.txt
+├── server/                           # 早期 Express 后端（已废弃）
+├── docker-compose.yml               # Docker 编排（根目录）
+├── monitor.py                        # 系统监控脚本
+└── README.md
+```
+
+## 部署前配置（重要）
+
+启动系统前，**必须**先将以下文件中的 `your_key_input_here` 替换为你自己的真实密钥。
+
+### Docker 部署（必须修改）
+
+**`docker-compose.yml`**（根目录）
+| 变量 | 位置 | 说明 | 获取地址 |
+|------|------|------|----------|
+| `SILICONFLOW_API_KEY` | celery_worker / fastapi 服务的 environment | OCR 识别与文本嵌入 | [SiliconCloud](https://cloud.siliconflow.cn) |
+| `MINIMAX_API_KEY` | celery_worker / fastapi 服务的 environment | LLM 大语言模型 | [MiniMax](https://platform.minimaxi.com) |
+| `JWT_SECRET` | fastapi 服务的 environment | JWT 签名密钥（自定义随机字符串即可） | 自行生成 |
+
+**`backend/docker-compose.yml`**（等同于根目录的，两套配置保持同步）
+| 变量 | 位置 |
+|------|------|
+| `SILICONFLOW_API_KEY` | celery_worker / fastapi 服务的 environment |
+| `MINIMAX_API_KEY` | celery_worker / fastapi 服务的 environment |
+| `JWT_SECRET` | fastapi 服务的 environment |
+
+### 本地开发（可选修改）
+
+**`backend/test_connectivity.py`** — 连通性测试脚本
+| 变量 | 说明 |
+|------|------|
+| `MINIMAX_API_KEY` | MiniMax LLM API Key |
+| `SILICONFLOW_API_KEY` | SiliconFlow API Key |
+
+### 已废弃服务（可忽略）
+
+- `server/src/services/minimaxLLM.ts` — 早期 Express 后端，已不再使用
+- `server/src/services/siliconflow.ts` — 早期 Express 后端，已不再使用
 
 ## 快速开始
 
@@ -89,7 +171,8 @@
 ### Docker 一键启动（推荐）
 
 ```bash
-# 在项目根目录执行
+# 1. 先按上方「部署前配置」章节替换好 API 密钥
+# 2. 在项目根目录执行
 docker compose up -d
 ```
 
