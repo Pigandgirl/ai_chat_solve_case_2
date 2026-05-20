@@ -126,78 +126,6 @@ ai_chat_solve_case_2/
 └── README.md
 ```
 
-## 部署前配置（重要）
-
-启动系统前，**必须**先将以下文件中的 `your_key_input_here` 替换为你自己的真实密钥。
-
-### Docker 部署（必须修改）
-
-**`docker-compose.yml`**（根目录）
-| 变量 | 位置 | 说明 | 获取地址 |
-|------|------|------|----------|
-| `SILICONFLOW_API_KEY` | celery_worker / fastapi 服务的 environment | OCR 识别与文本嵌入 | [SiliconCloud](https://cloud.siliconflow.cn) |
-| `MINIMAX_API_KEY` | celery_worker / fastapi 服务的 environment | LLM 大语言模型 | [MiniMax](https://platform.minimaxi.com) |
-| `JWT_SECRET` | fastapi 服务的 environment | JWT 签名密钥（自定义随机字符串即可） | 自行生成 |
-
-**`backend/docker-compose.yml`**（等同于根目录的，两套配置保持同步）
-| 变量 | 位置 |
-|------|------|
-| `SILICONFLOW_API_KEY` | celery_worker / fastapi 服务的 environment |
-| `MINIMAX_API_KEY` | celery_worker / fastapi 服务的 environment |
-| `JWT_SECRET` | fastapi 服务的 environment |
-
-### 本地开发（可选修改）
-
-**`backend/test_connectivity.py`** — 连通性测试脚本
-| 变量 | 说明 |
-|------|------|
-| `MINIMAX_API_KEY` | MiniMax LLM API Key |
-| `SILICONFLOW_API_KEY` | SiliconFlow API Key |
-
-### 已废弃服务（可忽略）
-
-- `server/src/services/minimaxLLM.ts` — 早期 Express 后端，已不再使用
-- `server/src/services/siliconflow.ts` — 早期 Express 后端，已不再使用
-
-## 快速开始
-
-### 环境要求
-- Docker + Docker Compose
-- Node.js >= 16（仅前端开发）
-- Python 3.11（仅后端本地开发）
-
-### Docker 一键启动（推荐）
-
-```bash
-# 1. 先按上方「部署前配置」章节替换好 API 密钥
-# 2. 在项目根目录执行
-docker compose up -d
-```
-
-启动 6 个服务：postgres、redis、minio、celery_worker、fastapi、frontend。
-
-### 本地开发
-
-```bash
-# 后端
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-
-# 前端
-cd client
-npm install
-npm start
-```
-
-### 访问应用
-
-| 服务 | 地址 |
-|------|------|
-| 前端 | http://localhost:3000 |
-| API | http://localhost:8000 |
-| API 文档 | http://localhost:8000/docs |
-| MinIO 控制台 | http://localhost:9001 |
 
 ## 开发流程
 
@@ -212,19 +140,7 @@ npm start
 9. 管理员可访问仪表盘查看系统数据概览
 10. 管理员可通过后台管理查看用户、案件和审计日志
 
-## 环境变量
 
-后端环境变量通过 `docker-compose.yml` 注入，主要配置项：
-
-| 变量 | 说明 |
-|------|------|
-| `DATABASE_URL` | PostgreSQL 连接串 |
-| `REDIS_URL` | Redis 连接串 |
-| `MINIO_*` | MinIO 访问密钥与地址 |
-| `SILICONFLOW_API_KEY` | OCR / Embedding API Key |
-| `MINIMAX_API_KEY` | LLM API Key |
-| `JWT_SECRET` | JWT 签名密钥 |
-| `CHROMA_PERSIST_DIR` | ChromaDB 持久化目录 |
 
 ## 待完善功能
 
